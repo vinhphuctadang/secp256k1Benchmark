@@ -1,10 +1,8 @@
 const crypto = require('crypto')
 const elliptic = require('elliptic')
+const secp256k1 = require('secp256k1')
 const EC = new elliptic.ec('secp256k1')
 const assert = require('assert')
-
-const chars = 'abcdefghiklmnopqrstuvwxyz0123456789'
-
 
 function hash(data){
   return crypto.createHash('sha256').update(data).digest('hex')
@@ -40,45 +38,55 @@ function generatePrivateKey(){
 }
 
 function generateMessage(){
-  let result = ''
-  for(let i = 0; i<100; i++) result += chars[parseInt(Math.random()*chars.length)]
-  return result
+  return crypto.randomBytes(100)
 }
 
-async function main(){
+let NUM_TEST = 10
+let msgCollection = []
+let sigCollection = []
+let privateKeyCollection = []
 
+for(let i = 0; i<NUM_TEST; i++) {
+  let privKey = generatePrivateKey()
+  let msg = generateMessage()
+  let sig = privKey.sign(hash(msg))
+  sig = Buffer.concat([sig.r.toBuffer('be',32), sig.s.toBuffer('be', 32), Buffer.from([sig.recoveryParam])]).toString('base64')
+
+  privateKeyCollection.push(privKey)
+  sigCollection.push(sig)
+  msgCollection.push(msg)
+}
+
+function main(){
   console.log('Preparing messages and signatures')
-  let NUM_TEST = 1000
-  let msgCollection = []
-  let sigCollection = []
-  let privateKeyCollection = []
-
-  for(let i = 0; i<NUM_TEST; i++) {
-    let privKey = generatePrivateKey()
-    let msg = generateMessage()
-    let sig = privKey.sign(hash(msg))
-    sig = Buffer.concat([sig.r.toBuffer('be',32), sig.s.toBuffer('be', 32), Buffer.from([sig.recoveryParam])]).toString('base64')
-
-    privateKeyCollection.push(privKey)
-    sigCollection.push(sig)
-    msgCollection.push(msg)
-  }
-
   let marked = Date.now()
   for(let i = 0; i<NUM_TEST; ++i) {
-    let msg = msgCollection[i]
+    let msgHash = hash(msgCollection[i])
     let privKey = privateKeyCollection[i]
-    let sig = sigCollection[i]
-    // console.log('Signature:', sig)
-    // let tmp = privKey.getPublic()
-    // pubKey = tmp.x.toString('hex', 64) + tmp.y.toString('hex', 64)
-    // console.log('Public key:', pubKey)
-    recoveredPubKey = recoverPubKey(msg, parseSig(sig))
-    // console.log('Recovered Public key:', recoveredPubKey)
-    // assert.deepEqual(pubKey, recoveredPubKey)
+    let sig = parseSig(sigCollection[i])
+    recoveredPubKey = recoverPubKey(msgHash, sig)
+    // console.log(recoveredPubKey)
   }
 
   console.log(`[Over ${NUM_TEST} test(s)] Elliptic consumed: ${Date.now() - marked} ms`)
 }
 
-main()
+function test(){
+  // recover public key of secp256k1-node lib
+  let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
+  let privKey = privateKeyCollection[0]
+  let sig = parseSig(sigCollection[0])
+
+  let mainSig = new Uint8Array(Buffer.concat([sig.r, sig.s]))
+
+  // console.log(mainSig)
+  let recoveredPubKey = secp256k1.ecdsaRecover(mainSig, sig.recoveryParam, msgHash, false)
+  console.log(Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
+  // console.log(recoveredPubKey)
+
+  recoveredPubKey = recoverPubKey(hash(msgCollection[0]), sig)
+  console.log(recoveredPubKey)
+}
+
+// main()
+test()

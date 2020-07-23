@@ -18,6 +18,7 @@
   "homepage": "https://github.com/vinhphuctadang/secp256k1Benchmark#readme",
   "dependencies": {
     "crypto": "^1.0.1",
-    "elliptic": "^6.5.3"
+    "elliptic": "^6.5.3",
+    "secp256k1": "^4.0.2"
   }
 }
