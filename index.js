@@ -61,10 +61,11 @@ function main(){
   console.log('Preparing messages and signatures')
   let marked = Date.now()
   for(let i = 0; i<NUM_TEST; ++i) {
-    let msgHash = hash(msgCollection[i])
+    let msgHash = msgCollection[i]
     let privKey = privateKeyCollection[i]
     let sig = parseSig(sigCollection[i])
-    recoveredPubKey = recoverPubKey(msgHash, sig)
+
+    recoveredPubKey = recoverPubKey(msg, sig)
     // console.log(recoveredPubKey)
   }
 
@@ -72,6 +73,7 @@ function main(){
 }
 
 function test(){
+  console.log(msgCollection[0].toString('hex'))
   // recover public key of secp256k1-node lib
   let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
   let privKey = privateKeyCollection[0]
@@ -79,12 +81,15 @@ function test(){
 
   let mainSig = new Uint8Array(Buffer.concat([sig.r, sig.s]))
 
+  console.log('==>',Buffer.from(msgHash).toString('hex'), sig.recoveryParam)
+
   // console.log(mainSig)
   let recoveredPubKey = secp256k1.ecdsaRecover(mainSig, sig.recoveryParam, msgHash, false)
   console.log(Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
   // console.log(recoveredPubKey)
 
-  recoveredPubKey = recoverPubKey(hash(msgCollection[0]), sig)
+  console.log('Hash:',hash(msgCollection[0]).length)
+  recoveredPubKey = recoverPubKey(msgCollection[0], sig)
   console.log(recoveredPubKey)
 }
 
