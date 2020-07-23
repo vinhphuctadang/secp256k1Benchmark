@@ -1,0 +1,23 @@
+{
+  "name": "secp256k1benchmark",
+  "version": "1.0.0",
+  "description": "Benchmark performance of secp256k1 libs",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinhphuctadang/secp256k1Benchmark.git"
+  },
+  "author": "vinhphuctadang",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vinhphuctadang/secp256k1Benchmark/issues"
+  },
+  "homepage": "https://github.com/vinhphuctadang/secp256k1Benchmark#readme",
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "elliptic": "^6.5.3"
+  }
+}
