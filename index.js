@@ -1,9 +1,9 @@
 const crypto = require('crypto')
 const elliptic = require('elliptic')
-const secp256k1 = require('secp256k1')
+const secp256k1_node = require('secp256k1') // from secp256k1-node
 const EC = new elliptic.ec('secp256k1')
 const assert = require('assert')
-const { instantiateSecp256k1 } = require('@bitauth/libauth')
+const { instantiateSecp256k1 } = require('@bitauth/libauth') // bitcoin-ts deprecated
 
 function hash(data){
   return crypto.createHash('sha256').update(data).digest('hex')
@@ -21,18 +21,6 @@ function parseSig(sig){
   return {r: r, s: s, recoveryParam: recoveryParam}
 }
 
-function recoverPubKey(data,signature){
-  let dataHash = hash(data)
-  // console.log(signature.recoveryParam)
-  let pubKey = EC.recoverPubKey(
-    hexToDecimal(dataHash),
-    signature,
-    signature.recoveryParam,
-    "hex"
-  )
-  return pubKey.x.toString('hex', 64) + pubKey.y.toString('hex', 64)
-}
-
 function generatePrivateKey(){
   let key = EC.genKeyPair()
   return key
@@ -42,74 +30,118 @@ function generateMessage(){
   return crypto.randomBytes(100)
 }
 
-let NUM_TEST = 10
+// prepare data
+let NUM_TEST = 5000
+
 let msgCollection = []
 let sigCollection = []
 let privateKeyCollection = []
+let publicKeyCollection = []
 
-for(let i = 0; i<NUM_TEST; i++) {
-  let privKey = generatePrivateKey()
-  let msg = generateMessage()
-  let sig = privKey.sign(hash(msg))
-  sig = Buffer.concat([sig.r.toBuffer('be',32), sig.s.toBuffer('be', 32), Buffer.from([sig.recoveryParam])]).toString('base64')
+function init(){
+  for(let i = 0; i<NUM_TEST; i++) {
+    let privKey = generatePrivateKey()
+    let msg = generateMessage()
+    let sig = privKey.sign(hash(msg))
+    sig = Buffer.concat([sig.r.toBuffer('be',32), sig.s.toBuffer('be', 32), Buffer.from([sig.recoveryParam])]).toString('base64')
 
-  privateKeyCollection.push(privKey)
-  sigCollection.push(sig)
-  msgCollection.push(msg)
+    privateKeyCollection.push(privKey)
+    sigCollection.push(sig)
+    msgCollection.push(msg)
+  }
 }
 
-function main(){
-  console.log('Preparing messages and signatures')
-  let marked = Date.now()
-  for(let i = 0; i<NUM_TEST; ++i) {
-    let msgHash = msgCollection[i]
-    let privKey = privateKeyCollection[i]
-    let sig = parseSig(sigCollection[i])
+function test_elliptic(){
 
-    recoveredPubKey = recoverPubKey(msg, sig)
+  let totalTime = 0
+  for(let i = 0; i<NUM_TEST; ++i) {
+
+    let marked = Date.now()
+    let msg = msgCollection[i]
+    let signature = parseSig(sigCollection[i])
+    let msgHash = hash(msg)
+
+    let pubKey = EC.recoverPubKey(
+      hexToDecimal(msgHash),
+      signature,
+      signature.recoveryParam,
+      "hex"
+    )
+
+    // output
+    let recoveredPubKey = pubKey.x.toString('hex', 64) + pubKey.y.toString('hex', 64)
+
+    // time measure
+    totalTime += Date.now() - marked
+
     // console.log(recoveredPubKey)
+
+    // save public key for making comparison to other packages
+    publicKeyCollection.push(recoveredPubKey)
   }
-  console.log(`[Over ${NUM_TEST} test(s)] Elliptic consumed: ${Date.now() - marked} ms`)
+  console.log(`[Over ${NUM_TEST} public key recover cases] Elliptic finished after: ${totalTime} ms`)
 }
 
 function test_secpk256k1node(){
-  console.log(msgCollection[0].toString('hex'))
-  // recover public key of secp256k1-node lib
-  let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
-  let privKey = privateKeyCollection[0]
-  let sig = parseSig(sigCollection[0])
 
-  let mainSig = new Uint8Array(Buffer.concat([sig.r, sig.s]))
+  let totalTime = 0
+  for(let i = 0; i<NUM_TEST; ++i) {
 
-  console.log('==>',Buffer.from(msgHash).toString('hex'), sig.recoveryParam)
+    let marked = Date.now()
 
-  // console.log(mainSig)
-  let recoveredPubKey = secp256k1.ecdsaRecover(mainSig, sig.recoveryParam, msgHash, false)
-  console.log('pubKey recovered by secp256k1:', Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
-  // console.log(recoveredPubKey)
+    let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[i]), 'hex'))
+    let sigBuffer = Buffer.from(sigCollection[i], 'base64')
+    let signature = new Uint8Array(sigBuffer.slice(0,64))
+    let recoveryParam = sigBuffer[64]
 
-  recoveredPubKey = recoverPubKey(msgCollection[0], sig)
-  console.log('Key recovered by elliptic:', recoveredPubKey)
+    // output
+    let tmp = secp256k1_node.ecdsaRecover(signature, recoveryParam, msgHash, false)
+    let recoveredPubKey = Buffer.from(tmp).toString('hex').substring(2)
+    // time measure
+    totalTime += Date.now() - marked
+
+    // compare
+    assert.equal(publicKeyCollection[i], recoveredPubKey)
+  }
+  console.log(`[Over ${NUM_TEST} public key recover cases] secp256k1-node finished after: ${totalTime} ms`)
 }
 
 async function test_libauth(){
-  console.log(msgCollection[0].toString('hex'))
-  // recover public key of secp256k1-node lib
-  let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
-  let privKey = privateKeyCollection[0]
-  let sig = parseSig(sigCollection[0])
 
-  let mainSig = new Uint8Array(Buffer.concat([sig.r, sig.s]))
+  const secp256k1_libauth = await instantiateSecp256k1()
+  let totalTime = 0
 
-  const secp256k1 = await instantiateSecp256k1()
-  let recoveredPubKey = secp256k1.recoverPublicKeyUncompressed(mainSig, sig.recoveryParam, msgHash)
-  console.log('pubKey recovered by libauth:', Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
-  // console.log(recoveredPubKey)
+  for(let i = 0; i<NUM_TEST; ++i) {
+    let marked = Date.now()
 
-  recoveredPubKey = recoverPubKey(msgCollection[0], sig)
-  console.log('Key recovered by elliptic:', recoveredPubKey)
+    let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[i]), 'hex'))
+    let sigBuffer = Buffer.from(sigCollection[i], 'base64')
+    let signature = new Uint8Array(sigBuffer.slice(0,64))
+    let recoveryParam = sigBuffer[64]
+
+    // output
+    let tmp = secp256k1_libauth.recoverPublicKeyUncompressed(signature, recoveryParam, msgHash)
+    let recoveredPubKey = Buffer.from(tmp).toString('hex').substring(2) // 0x04 as prefix
+
+    // time measure
+    totalTime += Date.now() - marked
+
+    // compare
+    assert.equal(publicKeyCollection[i], recoveredPubKey)
+  }
+  console.log(`[Over ${NUM_TEST} public key recover cases] libauth finished after: ${totalTime} ms`)
 }
 
-test_libauth()
-// main()
-// test_secpk256k1node()
+async function main(){
+  console.log(`Initializing ${NUM_TEST} random private keys, messages and signatures (signatures are signed by elliptic)...`)
+  init()
+  console.log('Benchmarking elliptic')
+  test_elliptic()
+  console.log('Benchmarking secpk256k1node')
+  test_secpk256k1node()
+  console.log('Benchmarking libauth')
+  await test_libauth()
+
+}
+
+main()
