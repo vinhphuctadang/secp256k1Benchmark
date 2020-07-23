@@ -3,6 +3,7 @@ const elliptic = require('elliptic')
 const secp256k1 = require('secp256k1')
 const EC = new elliptic.ec('secp256k1')
 const assert = require('assert')
+const { instantiateSecp256k1 } = require('@bitauth/libauth')
 
 function hash(data){
   return crypto.createHash('sha256').update(data).digest('hex')
@@ -68,11 +69,10 @@ function main(){
     recoveredPubKey = recoverPubKey(msg, sig)
     // console.log(recoveredPubKey)
   }
-
   console.log(`[Over ${NUM_TEST} test(s)] Elliptic consumed: ${Date.now() - marked} ms`)
 }
 
-function test(){
+function test_secpk256k1node(){
   console.log(msgCollection[0].toString('hex'))
   // recover public key of secp256k1-node lib
   let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
@@ -85,13 +85,31 @@ function test(){
 
   // console.log(mainSig)
   let recoveredPubKey = secp256k1.ecdsaRecover(mainSig, sig.recoveryParam, msgHash, false)
-  console.log(Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
+  console.log('pubKey recovered by secp256k1:', Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
   // console.log(recoveredPubKey)
 
-  console.log('Hash:',hash(msgCollection[0]).length)
   recoveredPubKey = recoverPubKey(msgCollection[0], sig)
-  console.log(recoveredPubKey)
+  console.log('Key recovered by elliptic:', recoveredPubKey)
 }
 
+async function test_libauth(){
+  console.log(msgCollection[0].toString('hex'))
+  // recover public key of secp256k1-node lib
+  let msgHash = new Uint8Array(Buffer.from(hash(msgCollection[0]), 'hex'))
+  let privKey = privateKeyCollection[0]
+  let sig = parseSig(sigCollection[0])
+
+  let mainSig = new Uint8Array(Buffer.concat([sig.r, sig.s]))
+
+  const secp256k1 = await instantiateSecp256k1()
+  let recoveredPubKey = secp256k1.recoverPublicKeyUncompressed(mainSig, sig.recoveryParam, msgHash)
+  console.log('pubKey recovered by libauth:', Buffer.from(recoveredPubKey).toString('hex').substring(2)) // 0x04 as prefix
+  // console.log(recoveredPubKey)
+
+  recoveredPubKey = recoverPubKey(msgCollection[0], sig)
+  console.log('Key recovered by elliptic:', recoveredPubKey)
+}
+
+test_libauth()
 // main()
-test()
+// test_secpk256k1node()
